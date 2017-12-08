@@ -12,6 +12,9 @@ namespace {
 	const auto SendsPerSocket = 8;
 	const auto NumSendSockets = 16;
 	const size_t GlobalRioBufferSize = 1024ull * 4096ull;
+	const uint32_t ServerAddress = 0x0400020a;
+
+
 	const uint8_t udpMsgData[36]{
 
 		0x02, 0xdc, //Transaction ID: 0x02DC
@@ -59,7 +62,12 @@ namespace {
 		}
 
 		RIO_BUF udpData{ buf.bufid , 0, sizeof(udpMsgData) };
-		SOCKADDR_INET remoteSocket{ AF_INET , htons(53), {10, 2, 0, 4} };
+		SOCKADDR_INET remoteSocket; SecureZeroMemory(&remoteSocket, sizeof(remoteSocket));
+		remoteSocket.si_family = AF_INET;
+		remoteSocket.Ipv4.sin_family = AF_INET;
+		remoteSocket.Ipv4.sin_port = htons(53);
+		remoteSocket.Ipv4.sin_addr.S_un.S_addr = ServerAddress;
+
 		RIO_BUF udpRemote{ buf.bufid , 1024, sizeof(remoteSocket) };
 		RtlCopyMemory(reinterpret_cast<uint8_t *>(buf.buf) + 1024, &remoteSocket, sizeof(remoteSocket));
 		RtlCopyMemory(reinterpret_cast<uint8_t *>(buf.buf) + 0, udpMsgData, sizeof(udpMsgData));

@@ -67,11 +67,20 @@ namespace rio {
 		LPFN_RIODEREGISTERBUFFER RIODeregisterBuffer;
 		LPFN_RIOREGISTERBUFFER RIORegisterBuffer;
 		LPVOID buf;
+		size_t bufferSize;
+
 		void init(Sockets::GenericWin10Socket &sock, DWORD DataLength) {
 			RIORegisterBuffer = sock.RIORegisterBuffer;
 			RIODeregisterBuffer = sock.RIODeregisterBuffer;
 			buf = VirtualAlloc(nullptr, DataLength, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-			bufid = RIORegisterBuffer(reinterpret_cast<PCHAR>(buf), DataLength);
+			std::vector<MEMORY_BASIC_INFORMATION> mbi{ 16 };
+			const auto numMbiBytes = VirtualQuery(buf, mbi.data(), mbi.size() * sizeof(MEMORY_BASIC_INFORMATION));
+			if (!numMbiBytes) {
+				const auto lastError = GetLastError();
+				printf("VirtualQuery lastError: %u\n", lastError);
+			}
+			mbi.resize(numMbiBytes / sizeof(MEMORY_BASIC_INFORMATION));
+			bufid = RIORegisterBuffer(reinterpret_cast<PCHAR>(mbi[0].BaseAddress), mbi[0].RegionSize);
 		}
 		~Buffer() {
 			RIODeregisterBuffer(bufid);
