@@ -151,6 +151,7 @@
     <ClInclude Include="ErrorFormatMessage.h" />
     <ClInclude Include="InputOutputCompletionPort.h" />
     <ClInclude Include="Platform.h" />
+    <ClInclude Include="Statistics.h" />
     <ClInclude Include="UserHandle.h" />
     <ClInclude Include="rio.h" />
     <ClInclude Include="RioBuffer.h" />

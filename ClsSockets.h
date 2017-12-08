@@ -676,3 +676,8 @@ namespace Sockets {
 	//		WSASetSocketPeerTargetName
 	//		WSASetSocketSecurity
 };
+
+
+#ifdef MainCPP //define in only one cpp file
+Sockets::GuidMsTcpIp Sockets::GenericWin10Socket::GUID_WSAID;
+#endif

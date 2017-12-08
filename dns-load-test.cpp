@@ -1,24 +1,18 @@
 // dns-load-test.cpp : Defines the entry point for the console application.
 //
 
+#define MainCPP
+
 #include "Platform.h"
-
-
 #include "ClsSockets.h"
-
-Sockets::GuidMsTcpIp Sockets::GenericWin10Socket::GUID_WSAID;
-
 #include "ErrorFormatMessage.h"
-
 #include "UserHandle.h"
 #include "InputOutputCompletionPort.h"
 #include "DomainNameSystem.h"
-
+#include "rio.h"
+#include "Statistics.h"
 
 namespace {
-
-#include "rio.h"
-
 	const auto SendsPerSocket = 8;
 	const auto NumSendSockets = 16;
 	const size_t GlobalRioBufferSize = 4096ull * 1ull;
@@ -26,16 +20,11 @@ namespace {
 	const uint32_t ServerPort = 53;
 	const rio::IPv4_Address ClientAddress{ 10, 0, 0, 3 };
 
-
-
-
-
 	InputOutputCompletionPort::IOCP iocp;
 #include "ThreadVector.h"
 	rio::CompletionQueue sendCQ;
 	rio::CompletionQueue recvCQ;
 	rio::Buffer buf;
-
 
 	void startTest() {
 		Sockets::GenericWin10Socket sock(AF_INET, SOCK_DGRAM, IPPROTO_UDP, WSA_FLAG_REGISTERED_IO);
@@ -70,16 +59,15 @@ namespace {
 
 		ThreadVector::runThreads();
 		printf("test");
-		//sock.RIOSendEx(cq.completion,)
 	}
-
-
-
 };
 
 int main()
 {
-	Sockets::Win10SocketLib win10SocketLib;
-	startTest();
+	//Sockets::Win10SocketLib win10SocketLib;
+	//startTest();
+	Statistics::StandardDeviation stddev;
+	std::
+	stddev.addSample(2)
 	return 0;
 }
