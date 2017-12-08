@@ -53,7 +53,7 @@ namespace rio {
 			SOCKADDR_INET Socket; SecureZeroMemory(&Socket, sizeof(Socket));
 			Socket.Ipv4.sin_family = Socket.si_family = AF_INET;
 			Socket.Ipv4.sin_port = htons(Port);
-			Socket.Ipv4.sin_addr.S_un.S_addr = IPV4;
+			Socket.Ipv4.sin_addr.S_un.S_addr = htonl(IPV4);
 			return append(&Socket, sizeof(Socket));
 		}
 	};

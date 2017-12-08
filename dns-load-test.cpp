@@ -5,10 +5,8 @@
 
 #include "Platform.h"
 
-std::vector<std::wstring> CommandLineVector;
-std::unordered_set<std::wstring> CommandLineSet;
-std::unordered_map<std::wstring, std::wstring> CommandLineMap;
-
+#include "CommandLine.h"
+CommandLine cmd;
 
 #include "ClsSockets.h"
 #include "ErrorFormatMessage.h"
@@ -19,12 +17,10 @@ std::unordered_map<std::wstring, std::wstring> CommandLineMap;
 #include "rio.h"
 
 namespace {
-	const auto SendsPerSocket = 8;
-	const auto NumSendSockets = 16;
-	const size_t GlobalRioBufferSize = 4096ull * 1ull;
-	const uint32_t ServerAddress = 0x0400020a;
-	const uint32_t ServerPort = 53;
-	const rio::IPv4_Address ClientAddress{ 10, 0, 0, 3 };
+	size_t SendsPerSocket = 8ui64; //default
+	size_t GlobalRioBufferSize = 4096ui64 * 1024ui64; //default
+	rio::IPv4_AddressRangePort ClientAddress;
+	rio::IPv4_AddressRangePort ServerAddress;
 
 	InputOutputCompletionPort::IOCP iocp;
 
@@ -41,24 +37,25 @@ namespace {
 		Sockets::MsSockFuncPtrs funcPtrs(sock.getSocket(), guidMsTcpIP);
 		sendCQ.init(sock, iocp);
 		recvCQ.init(sock, iocp);
-		buf.init(sock, GlobalRioBufferSize);
+		buf.init(sock, SafeInt<DWORD>(GlobalRioBufferSize));
 
 		std::vector<rio::RioSock> sendSockets;
-		sendSockets.reserve(NumSendSockets);
+		sendSockets.reserve(ClientAddress.rangeAddresses());
 		for (decltype(sendSockets.capacity()) i{ 0 }; i < sendSockets.capacity(); i++) {
 			sendSockets.emplace_back(std::move(rio::RioSock()));
 		}
 
 		RIO_BUF udpData{ buf.append(&DomainNameSystem::udpMsgData, sizeof(DomainNameSystem::udpMsgData)) };
-		RIO_BUF udpRemote{ buf.appendAddress(ServerAddress, ServerPort) };
+		RIO_BUF udpRemote{ buf.appendAddress(ServerAddress, ServerAddress.port) };
 
+		uint32_t rangeOffset = 0;
 		for (auto &sendSock : sendSockets) {
-			sendSock.init(ClientAddress, sendCQ, recvCQ, 16, 16, &sendSock);
+			sendSock.init(ClientAddress.rangeOffset(rangeOffset++), sendCQ, recvCQ, 16, 16, &sendSock);
 		}
 
 		std::vector<rio::SendExRequest> ser;
 		for (auto &sendSock : sendSockets) {
-			for (int i = 0; i < SendsPerSocket; i++) {
+			for (decltype(SendsPerSocket) i{ 0 }; i < SendsPerSocket; i++) {
 				sendSock.queueSendEx(ser, &udpData, &udpRemote);
 			}
 		}
@@ -67,7 +64,7 @@ namespace {
 
 		for (auto &sendRequest : ser) {
 			sendRequest.AccumFunc = [](ULONG_PTR Parameter) {
-				sendStats.addSample(Parameter);
+				sendStats.addSample(static_cast<double_t>( Parameter));
 			};//AccumSendTicks;
 			sendRequest.AccumSize = 128;
 			sendRequest.AccumThread = MainThread;
@@ -84,53 +81,25 @@ namespace {
 	}
 };
 
-std::vector<std::wstring> GetCommandLineArgs() {
-	int nArgs;
-	const auto szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-	std::vector<std::wstring> cmdLine(nArgs);
-	for (decltype(cmdLine.size()) i{ 0 }; i < cmdLine.size(); i++) {
-		cmdLine[i] = szArglist[i];
-	}
-	LocalFree(szArglist);
-	return cmdLine;
-}
+void parseCommandLine() {
 
-auto ArgsToSet() {
-	std::unordered_set<std::wstring> ret;
-	int nArgs{ 0 };
-	const auto szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-	std::vector<std::wstring> cmdLine(nArgs);
-	for (decltype(cmdLine.size()) i{ 0 }; i < cmdLine.size(); i++) {
-		std::wstring arg{ szArglist[i] };
-		ret.emplace(arg);
-	}
-	return ret;
-}
+	ServerAddress = cmd.argMap[L"server"];
+	ClientAddress = cmd.argMap[L"client"];
 
-auto ArgsToMap() {
-	std::unordered_map<std::wstring, std::wstring> ret;
+	SendsPerSocket = cmd.argMap.count(L"SendsPerSocket") ?
+		std::stoull(cmd.argMap[L"SendsPerSocket"]) :
+		SendsPerSocket;
 
-	int nArgs{ 0 };
-	const auto szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-	std::vector<std::wstring> cmdLine(nArgs);
-	for (decltype(cmdLine.size()) i{ 1 }; i < cmdLine.size(); i++) {
-		std::wstring arg{ szArglist[i] };
-		const auto found{ arg.find_first_of(L"=") };
-		if (std::wstring::npos == found) {
-			continue;
-		}
-		ret.emplace(arg.substr(0, found), arg.substr(found + 1));
-	}
-	LocalFree(szArglist);
+	GlobalRioBufferSize = cmd.argMap.count(L"GlobalRioBufferSize") ?
+		std::stoull(cmd.argMap[L"GlobalRioBufferSize"]) :
+		GlobalRioBufferSize;
 
-	return ret;
 }
 
 int main()
 {
-	CommandLineVector = GetCommandLineArgs();
-	CommandLineSet = ArgsToSet();
-	CommandLineMap = ArgsToMap();
+	parseCommandLine();
+
 	Sockets::Win10SocketLib win10SocketLib;
 	startTest();
 

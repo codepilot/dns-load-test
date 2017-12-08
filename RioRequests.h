@@ -48,7 +48,7 @@ namespace rio {
 			const auto timeTaken{ PerfCountCompleted.QuadPart - PerfCountStart.QuadPart };
 			stats.addSample(static_cast<double_t>(timeTaken) * freqToMicroseconds);
 			if (stats.count() == AccumSize) {
-				QueueUserAPC(AccumFunc, AccumThread, stats.sum());
+				QueueUserAPC(AccumFunc, AccumThread, static_cast<ULONG_PTR>( stats.sum() ));
 				stats.clear();
 			}
 		}
