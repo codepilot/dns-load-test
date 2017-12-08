@@ -15,6 +15,7 @@ namespace {
 	const auto NumSendSockets = 16;
 	const size_t GlobalRioBufferSize = 4096ull * 1ull;
 	const uint32_t ServerAddress = 0x0400020a;
+	const rio::IPv4_Address ClientAddress{ 10, 0, 0, 3 };
 
 
 	const uint8_t udpMsgData[36]{
@@ -40,18 +41,20 @@ namespace {
 	};
 
 
-	
-	HANDLE iocp;
+#include "UserHandle.h"
+#include "InputOutputCompletionPort.h"
+
+	InputOutputCompletionPort::IOCP iocp;
 	rio::CompletionQueue sendCQ;
 	rio::CompletionQueue recvCQ;
 	rio::Buffer buf;
 
 #include "ThreadVector.h"
+#include "InputOutputCompletionPort.h"
 
 	void startTest() {
 		Sockets::GenericWin10Socket sock(AF_INET, SOCK_DGRAM, IPPROTO_UDP, WSA_FLAG_REGISTERED_IO);
 		static Sockets::GuidMsTcpIp guidMsTcpIP;
-		iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
 		Sockets::MsSockFuncPtrs funcPtrs(sock.getSocket(), guidMsTcpIP);
 		sendCQ.init(sock, iocp);
 		recvCQ.init(sock, iocp);
@@ -74,17 +77,11 @@ namespace {
 		RtlCopyMemory(reinterpret_cast<uint8_t *>(buf.buf) + 1024, &remoteSocket, sizeof(remoteSocket));
 		RtlCopyMemory(reinterpret_cast<uint8_t *>(buf.buf) + 0, udpMsgData, sizeof(udpMsgData));
 
-		sockaddr_in LocalAddr{ AF_INET , htons(0),{ 10, 0, 0, 3 } };
 		for (auto &sendSock : sendSockets) {
-			sendSock.init(sendCQ, recvCQ, 16, 16, &sendSock);
-			auto rc = bind(sendSock.sock.getSocket(), (struct sockaddr *) &LocalAddr, sizeof(LocalAddr));
-			if (rc != 0) {
-				printf("bind: %d\n", rc);
-			}
+			sendSock.init(ClientAddress, sendCQ, recvCQ, 16, 16, &sendSock);
 		}
 
 		std::vector<rio::SendExRequest> ser;
-		ser.reserve(sendSockets.size() * SendsPerSocket);
 		for (auto &sendSock : sendSockets) {
 			for (int i = 0; i < SendsPerSocket; i++) {
 				sendSock.queueSendEx(ser, &udpData, &udpRemote);
@@ -96,7 +93,6 @@ namespace {
 
 		ThreadVector::runThreads();
 		printf("test");
-		CloseHandle(iocp);
 		//sock.RIOSendEx(cq.completion,)
 	}
 

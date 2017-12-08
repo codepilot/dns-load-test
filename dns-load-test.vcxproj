@@ -148,6 +148,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="ErrorFormatMessage.h" />
+    <ClInclude Include="InputOutputCompletionPort.h" />
+    <ClInclude Include="UserHandle.h" />
     <ClInclude Include="rio.h" />
     <ClInclude Include="RioBuffer.h" />
     <ClInclude Include="RioCompletionQueue.h" />
