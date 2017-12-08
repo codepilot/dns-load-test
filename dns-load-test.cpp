@@ -3,6 +3,8 @@
 
 #include "stdafx.h"
 
+const auto SendsPerSocket = 8;
+
 
 Sockets::GuidMsTcpIp Sockets::GenericWin10Socket::GUID_WSAID;
 
@@ -285,7 +287,6 @@ void startTest() {
 	}
 
 	std::vector<rio::SendExRequest> ser;
-	const auto SendsPerSocket = 8;
 	ser.reserve(sendSockets.size() * SendsPerSocket);
 	for (auto &sendSock : sendSockets) {
 		for (int i = 0; i < SendsPerSocket; i++) {
