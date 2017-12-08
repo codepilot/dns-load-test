@@ -25,8 +25,12 @@ namespace rio {
 		}
 
 		~Buffer() {
-			RIODeregisterBuffer(bufid);
-			VirtualFree(buf, 0, MEM_RELEASE);
+			if (bufid) {
+				RIODeregisterBuffer(bufid);
+			}
+			if (buf) {
+				VirtualFree(buf, 0, MEM_RELEASE);
+			}
 		}
 
 		size_t linearAllocate(size_t byteCount) {

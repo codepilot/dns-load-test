@@ -11,7 +11,7 @@ namespace rio {
 		LARGE_INTEGER PerfCountStart{ 0 };
 		LARGE_INTEGER PerfCountCompleted{ 0 };
 		double_t freqToMicroseconds{ 0 };
-		std::vector<double_t> completionTimes;
+		Statistics::StandardDeviation stats;
 
 		SendExRequest(LPFN_RIOSENDEX _RIOSendEx, RIO_RQ _requests, PRIO_BUF _pData, PRIO_BUF _pRemoteAddress) {
 			RIOSendEx = _RIOSendEx;
@@ -40,16 +40,17 @@ namespace rio {
 			return sum(dv) / static_cast<double_t>(dv.size());
 		}
 
+		PAPCFUNC AccumFunc{ nullptr };
+		HANDLE AccumThread{ nullptr };
+		size_t AccumSize{ 0xFFFFFFFF };
 		void completed() {
 			QueryPerformanceCounter(&PerfCountCompleted);
 			const auto timeTaken{ PerfCountCompleted.QuadPart - PerfCountStart.QuadPart };
-			completionTimes.push_back(static_cast<double_t>(timeTaken) * freqToMicroseconds);
-			if (completionTimes.size() >= 1000) {
-				const auto avgMicroSeconds = avg(completionTimes);
-				printf("timeTaken(%I64u): %fus, %fMbps\n", completionTimes.size(), avgMicroSeconds, static_cast<double_t>(pData->Length) * 8.0 / avgMicroSeconds);
-				completionTimes.resize(0);
+			stats.addSample(static_cast<double_t>(timeTaken) * freqToMicroseconds);
+			if (stats.count() == AccumSize) {
+				QueueUserAPC(AccumFunc, AccumThread, stats.sum());
+				stats.clear();
 			}
-
 		}
 
 		void send() {

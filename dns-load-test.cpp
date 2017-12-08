@@ -9,8 +9,8 @@
 #include "UserHandle.h"
 #include "InputOutputCompletionPort.h"
 #include "DomainNameSystem.h"
-#include "rio.h"
 #include "Statistics.h"
+#include "rio.h"
 
 namespace {
 	const auto SendsPerSocket = 8;
@@ -19,12 +19,16 @@ namespace {
 	const uint32_t ServerAddress = 0x0400020a;
 	const uint32_t ServerPort = 53;
 	const rio::IPv4_Address ClientAddress{ 10, 0, 0, 3 };
+	HANDLE MainThread;
 
 	InputOutputCompletionPort::IOCP iocp;
+
 #include "ThreadVector.h"
 	rio::CompletionQueue sendCQ;
 	rio::CompletionQueue recvCQ;
 	rio::Buffer buf;
+
+	Statistics::StandardDeviation sendStats;
 
 	void startTest() {
 		Sockets::GenericWin10Socket sock(AF_INET, SOCK_DGRAM, IPPROTO_UDP, WSA_FLAG_REGISTERED_IO);
@@ -54,20 +58,40 @@ namespace {
 			}
 		}
 
+		for (auto &sendRequest : ser) {
+			sendRequest.AccumFunc = [](ULONG_PTR Parameter) {
+				sendStats.addSample(Parameter);
+			};//AccumSendTicks;
+			sendRequest.AccumSize = 1024;
+			sendRequest.AccumThread = MainThread;
+		}
+
+
 		rio::SendExRequest::sendAll(ser);
 		sock.RIONotify(sendCQ.completion);
 
-		ThreadVector::runThreads();
+		ThreadVector::runThreads(1000, []() {
+			std::cout << sendStats.statistics() << std::endl;
+		});
 		printf("test");
 	}
 };
 
 int main()
 {
-	//Sockets::Win10SocketLib win10SocketLib;
-	//startTest();
+	MainThread = UserHandle::Handle::duplicate(GetCurrentThread());
+#if 1
+	Sockets::Win10SocketLib win10SocketLib;
+	startTest();
+#else
 	Statistics::StandardDeviation stddev;
-	std::
-	stddev.addSample(2)
-	return 0;
+	std::array<double_t, 8> samples{2, 4, 4, 4, 5, 5, 7, 9};
+	for (const auto &sample : samples) {
+		stddev.addSample(sample);
+	}
+	std::cout << stddev.statistics() << std::endl;
+#endif
+	puts("Press any key to quit");
+	return getchar();
+
 }

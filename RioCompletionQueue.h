@@ -26,7 +26,9 @@ namespace rio {
 			completion = RIOCreateCompletionQueue(1024, &rioComp);
 		}
 		~CompletionQueue() {
-			RIOCloseCompletionQueue(completion);
+			if (completion) {
+				RIOCloseCompletionQueue(completion);
+			}
 		}
 		std::vector<RIORESULT> dequeue() {
 			std::vector<RIORESULT> ret;

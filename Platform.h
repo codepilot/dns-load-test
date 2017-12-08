@@ -10,6 +10,7 @@
 #include <array>
 
 #include <stdio.h>
+#include <iostream>
 #include <tchar.h>
 #include <fcntl.h>
 
