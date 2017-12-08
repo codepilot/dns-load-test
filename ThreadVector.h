@@ -61,11 +61,11 @@ namespace ThreadVector {
 
 	void runThreads() {
 		std::vector<std::vector<Thread>> processorGroups;
-		processorGroups.resize(GetMaximumProcessorGroupCount());
+		processorGroups.resize(min(1, GetMaximumProcessorGroupCount()));
 		WORD curProcGroup{ 0 };
 
 		for (auto &procGroup : processorGroups) {
-			procGroup.resize(GetMaximumProcessorCount(curProcGroup));
+			procGroup.resize(min(1, GetMaximumProcessorCount(curProcGroup)));
 			BYTE curProc{ 0 };
 			for (auto &proc : procGroup) {
 				proc.create(DequeueThread, iocp, STACK_SIZE_PARAM_IS_A_RESERVATION | CREATE_SUSPENDED);

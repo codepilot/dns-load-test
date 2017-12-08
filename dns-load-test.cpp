@@ -12,7 +12,7 @@ Sockets::GuidMsTcpIp Sockets::GenericWin10Socket::GUID_WSAID;
 
 #include "UserHandle.h"
 #include "InputOutputCompletionPort.h"
-
+#include "DomainNameSystem.h"
 
 
 namespace {
@@ -23,30 +23,9 @@ namespace {
 	const auto NumSendSockets = 16;
 	const size_t GlobalRioBufferSize = 4096ull * 1ull;
 	const uint32_t ServerAddress = 0x0400020a;
+	const uint32_t ServerPort = 53;
 	const rio::IPv4_Address ClientAddress{ 10, 0, 0, 3 };
 
-
-	const uint8_t udpMsgData[36]{
-
-		0x02, 0xdc, //Transaction ID: 0x02DC
-		0x01, 0x00, //Flags: 0x0100 Standard Query
-		0x00, 0x01, //Questions: 1
-		0x00, 0x00, //Answers: 0
-		0x00, 0x00, //Authority: 0
-		0x00, 0x00, //Additionals: 0
-		
-		//Query: ns4.archeofutur.us: type AAAA, class IN
-			0x03, //3 bytes
-				0x6e, 0x73, 0x34, // "ns4"
-			0x0b, // 11 bytes
-				0x61, 0x72,	0x63, 0x68, 0x65, 0x6f, 0x66, 0x75, 0x74, 0x75, 0x72, // "archeofutur"
-			0x02, // 2 bytes
-				0x75, 0x73, // "us"
-			0x00, // 0 bytes, end of domain name
-		
-			0x00, 0x1c, //type 28 AAAA
-			0x00, 0x01 //Class 1 Internet
-	};
 
 
 
@@ -72,16 +51,8 @@ namespace {
 			sendSockets.emplace_back(std::move(rio::RioSock()));
 		}
 
-		RIO_BUF udpData{ buf.bufid , 0, sizeof(udpMsgData) };
-		SOCKADDR_INET remoteSocket; SecureZeroMemory(&remoteSocket, sizeof(remoteSocket));
-		remoteSocket.si_family = AF_INET;
-		remoteSocket.Ipv4.sin_family = AF_INET;
-		remoteSocket.Ipv4.sin_port = htons(53);
-		remoteSocket.Ipv4.sin_addr.S_un.S_addr = ServerAddress;
-
-		RIO_BUF udpRemote{ buf.bufid , 1024, sizeof(remoteSocket) };
-		RtlCopyMemory(reinterpret_cast<uint8_t *>(buf.buf) + 1024, &remoteSocket, sizeof(remoteSocket));
-		RtlCopyMemory(reinterpret_cast<uint8_t *>(buf.buf) + 0, udpMsgData, sizeof(udpMsgData));
+		RIO_BUF udpData{ buf.append(&DomainNameSystem::udpMsgData, sizeof(DomainNameSystem::udpMsgData)) };
+		RIO_BUF udpRemote{ buf.appendAddress(ServerAddress, ServerPort) };
 
 		for (auto &sendSock : sendSockets) {
 			sendSock.init(ClientAddress, sendCQ, recvCQ, 16, 16, &sendSock);
