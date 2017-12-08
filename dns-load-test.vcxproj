@@ -147,8 +147,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="DomainNameSystem.h" />
     <ClInclude Include="ErrorFormatMessage.h" />
     <ClInclude Include="InputOutputCompletionPort.h" />
+    <ClInclude Include="Platform.h" />
     <ClInclude Include="UserHandle.h" />
     <ClInclude Include="rio.h" />
     <ClInclude Include="RioBuffer.h" />
@@ -156,7 +158,6 @@
     <ClInclude Include="RioRequestQueue.h" />
     <ClInclude Include="RioRequests.h" />
     <ClInclude Include="RioSock.h" />
-    <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="ThreadVector.h" />
     <ClInclude Include="VirtualBuffer.h" />

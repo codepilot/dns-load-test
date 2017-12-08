@@ -3,6 +3,7 @@
 namespace ThreadVector {
 
 	DWORD WINAPI DequeueThread(LPVOID lpThreadParameter) {
+		//InputOutputCompletionPort::IOCP *iocp{ reinterpret_cast<decltype(iocp)>(lpThreadParameter) };
 		for (;;) {
 			std::vector<OVERLAPPED_ENTRY> entries;
 			entries.resize(16);
@@ -67,7 +68,7 @@ namespace ThreadVector {
 			procGroup.resize(GetMaximumProcessorCount(curProcGroup));
 			BYTE curProc{ 0 };
 			for (auto &proc : procGroup) {
-				proc.create(DequeueThread, 0, STACK_SIZE_PARAM_IS_A_RESERVATION | CREATE_SUSPENDED);
+				proc.create(DequeueThread, iocp, STACK_SIZE_PARAM_IS_A_RESERVATION | CREATE_SUSPENDED);
 				PROCESSOR_NUMBER procNum{ curProcGroup, curProc, 0 };
 				proc.setThreadIdealProcessorEx(&procNum);
 				proc.resumeThread();

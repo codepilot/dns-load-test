@@ -4,15 +4,6 @@
 #include "msGuids.hpp"
 
 namespace Sockets {
-
-
-
-
-
-
-
-
-
 	template<typename sig>
 	int getExtFuncPtr(SOCKET sock, DWORD dwIoControlCode, LPGUID guid, sig *ret) {
 		DWORD dwBytes{ 0 };

@@ -1,11 +1,19 @@
 // dns-load-test.cpp : Defines the entry point for the console application.
 //
 
-#include "stdafx.h"
+#include "Platform.h"
+
+
+#include "ClsSockets.h"
 
 Sockets::GuidMsTcpIp Sockets::GenericWin10Socket::GUID_WSAID;
 
 #include "ErrorFormatMessage.h"
+
+#include "UserHandle.h"
+#include "InputOutputCompletionPort.h"
+
+
 
 namespace {
 
@@ -41,16 +49,14 @@ namespace {
 	};
 
 
-#include "UserHandle.h"
-#include "InputOutputCompletionPort.h"
+
 
 	InputOutputCompletionPort::IOCP iocp;
+#include "ThreadVector.h"
 	rio::CompletionQueue sendCQ;
 	rio::CompletionQueue recvCQ;
 	rio::Buffer buf;
 
-#include "ThreadVector.h"
-#include "InputOutputCompletionPort.h"
 
 	void startTest() {
 		Sockets::GenericWin10Socket sock(AF_INET, SOCK_DGRAM, IPPROTO_UDP, WSA_FLAG_REGISTERED_IO);
