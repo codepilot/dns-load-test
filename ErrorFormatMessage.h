@@ -16,7 +16,7 @@ public:
 		LocalFree(lpMsgBuf);
 		DebugBreak();
 	}
-	static void OutputDebug(int errorCode) {
+	static void OutputDebug(const int errorCode) {
 		LPVOID lpMsgBuf;
 		DWORD err = FormatMessage(
 			FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS/*_In_      DWORD dwFlags*/,
@@ -28,8 +28,12 @@ public:
 			nullptr/*_In_opt_  va_list *Arguments*/);
 		OutputDebugString(reinterpret_cast<LPCTSTR>(lpMsgBuf));
 		LocalFree(lpMsgBuf);
-
-		DebugBreak();
+		switch(errorCode) {
+			case 10055: //out of buffer
+				break;
+			default:
+				DebugBreak();
+		}
 	}
 	static void exGetLastError() {
 		const auto lastError{ GetLastError() };

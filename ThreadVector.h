@@ -1,18 +1,21 @@
 #pragma once
 
+#include <intrin.h>
+
 namespace ThreadVector {
 
 	DWORD WINAPI DequeueThread(LPVOID lpThreadParameter) {
 		for (;;) {
-			std::vector<OVERLAPPED_ENTRY> entries;
-			entries.resize(16);
+			std::array<OVERLAPPED_ENTRY, 16> entriesArray;
 			DWORD numEntriesRemoved{ 0 };
-			const auto status = GetQueuedCompletionStatusEx(iocp, entries.data(), SafeInt<ULONG>(entries.capacity()), &numEntriesRemoved, INFINITE, TRUE);
-			entries.resize(numEntriesRemoved);
-			for (auto &entry : entries) {
+			const auto status = GetQueuedCompletionStatusEx(iocp, entriesArray.data(), SafeInt<ULONG>(entriesArray.size()), &numEntriesRemoved, INFINITE, TRUE);
+			__int64 numCompleted = 0;
+			for (size_t eidx{ 0 }; eidx < numEntriesRemoved; eidx++) {
+				auto &entry = entriesArray[eidx];
 				auto results = reinterpret_cast<rio::CompletionQueue*>(entry.lpCompletionKey)->dequeue();
 				for (auto result : results) {
-					reinterpret_cast<rio::SendExRequest *>(result.RequestContext)->completed();
+					//reinterpret_cast<rio::SendExRequest *>(result.RequestContext)->completed();
+					numCompleted++;
 					if (result.Status != 0 || result.BytesTransferred == 0) {
 						printf("result status: %d, bytes: %d, socket: %p, request: %p\n",
 							result.Status,
@@ -24,6 +27,8 @@ namespace ThreadVector {
 					reinterpret_cast<rio::RioSock *>(result.SocketContext)->sock.RIONotify(reinterpret_cast<rio::CompletionQueue*>(entry.lpCompletionKey)->completion);
 				}
 			}
+			InterlockedAdd64(&GlobalCompletionCount, numCompleted);
+
 		}
 		return 0;
 	}
@@ -62,11 +67,11 @@ namespace ThreadVector {
 	void runThreads(DWORD milliseconds = INFINITE, TimeoutFunc timeoutFunc=nullptr) {
 		std::vector<HANDLE> allThreads;
 		std::vector<std::vector<Thread>> processorGroups;
-		processorGroups.resize(min(1, GetMaximumProcessorGroupCount()));
+		processorGroups.resize(min(3, GetMaximumProcessorGroupCount()));
 		WORD curProcGroup{ 0 };
 
 		for (auto &procGroup : processorGroups) {
-			procGroup.resize(min(1, GetMaximumProcessorCount(curProcGroup)));
+			procGroup.resize(min(3, GetMaximumProcessorCount(curProcGroup)));
 			BYTE curProc{ 0 };
 			for (auto &proc : procGroup) {
 				proc.create(DequeueThread, iocp, STACK_SIZE_PARAM_IS_A_RESERVATION | CREATE_SUSPENDED);

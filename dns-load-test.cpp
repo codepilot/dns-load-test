@@ -5,6 +5,8 @@
 
 #include "Platform.h"
 
+__int64 volatile GlobalCompletionCount{ 0 };
+
 #include "CommandLine.h"
 CommandLine cmd;
 
@@ -75,7 +77,10 @@ namespace {
 		sock.RIONotify(sendCQ.completion);
 
 		ThreadVector::runThreads(1000, []() {
-			std::cout << sendStats.statistics() << std::endl;
+			//std::cout << sendStats.statistics() << std::endl;
+			__int64 capturedCount = GlobalCompletionCount;
+			std::cout << capturedCount << "pps " << (capturedCount * sizeof(DomainNameSystem::udpMsgData)) / 125000 << "Mbps" << std::endl;
+			InterlockedAdd64(&GlobalCompletionCount, -capturedCount);
 		});
 		printf("test");
 	}

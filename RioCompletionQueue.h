@@ -23,7 +23,7 @@ namespace rio {
 			rioComp.Iocp.IocpHandle = iocp;
 			rioComp.Iocp.Overlapped = &overlapped;
 			rioComp.Iocp.CompletionKey = this;
-			completion = RIOCreateCompletionQueue(1024, &rioComp);
+			completion = RIOCreateCompletionQueue(4096, &rioComp);
 		}
 		~CompletionQueue() {
 			if (completion) {
@@ -31,10 +31,10 @@ namespace rio {
 			}
 		}
 		std::vector<RIORESULT> dequeue() {
-			std::vector<RIORESULT> ret;
-			ret.resize(1024);
-			ret.resize(RIODequeueCompletion(completion, ret.data(), SafeInt<ULONG>(ret.capacity())));
-			return ret;
+			std::array<RIORESULT, 1024> ret;
+			const auto count = RIODequeueCompletion(completion, ret.data(), SafeInt<ULONG>(ret.size()));
+
+			return std::vector<RIORESULT>{ret.begin(), ret.begin() + count};
 		}
 	};
 }
