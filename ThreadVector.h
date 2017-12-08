@@ -28,9 +28,83 @@ namespace ThreadVector {
 		return 0;
 	}
 
+	class Handle {
+		void replaceHandle(HANDLE newHandle) {
+			if(! (handle == nullptr || handle == INVALID_HANDLE_VALUE)) {
+				CloseHandle(handle);
+				handle = nullptr;
+			}
+			handle = newHandle;
+		}
+	public:
+		HANDLE handle{ nullptr };
+		Handle(): handle{ nullptr } {} //blank
+		Handle& operator= (const Handle& src) { //copy
+			replaceHandle(duplicate(src.handle));
+		}
+		Handle& operator= (const HANDLE& src) { //copy
+			replaceHandle(duplicate(src));
+		}
+		Handle& operator= (Handle&& src) { //move
+			replaceHandle(duplicateClose(src.handle));
+		}
+		Handle& operator= (HANDLE&& src) { //move
+			replaceHandle(duplicateClose(src));
+		}
+		Handle(HANDLE _handle) : handle{ _handle } {} //constructor
+		Handle(const Handle &src) : handle{ duplicate(src.handle) } { } // copy constructor
+		Handle(Handle&& src) noexcept : handle{ duplicateClose(src.handle) } { } // move constructor
+
+		static HANDLE duplicate(const HANDLE &src) {
+			HANDLE ret{ nullptr };
+			if (!DuplicateHandle(GetCurrentProcess(), src, GetCurrentProcess(), &ret, 0, TRUE, DUPLICATE_SAME_ACCESS)) {
+				ErrorFormatMessage::exGetLastError();
+			}
+			return ret;
+		}
+		static HANDLE duplicateClose(HANDLE &src) {
+			HANDLE ret{ nullptr };
+			if (!DuplicateHandle(GetCurrentProcess(), src, GetCurrentProcess(), &ret, 0, TRUE, DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS)) {
+				ErrorFormatMessage::exGetLastError();
+			}
+			src = 0;
+			return ret;
+		}
+		operator HANDLE() { return handle; }
+	};
+
+	class Thread {
+	public:
+		DWORD id{ 0 };
+		Handle handle{ nullptr };
+		Thread() : id{ 0 }, handle{ nullptr } { }
+		Thread(const Thread &src) : id{ src.id }, handle{ handle } { } //copy
+		Thread(Thread&& src) noexcept: id{ std::move(src.id) }, handle{ std::move(handle) } { // move constructor
+			src.clear();
+		}
+
+		Thread(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, DWORD dwCreationFlags = STACK_SIZE_PARAM_IS_A_RESERVATION) {
+			
+		}
+		void clear() {
+			SecureZeroMemory(this, sizeof(*this));
+		}
+		void create(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, DWORD dwCreationFlags = STACK_SIZE_PARAM_IS_A_RESERVATION) {
+			handle.handle = CreateThread(nullptr, 0, lpStartAddress, lpParameter, dwCreationFlags, &id);
+		}
+		~Thread() {
+			WaitForSingleObject(handle, INFINITE);
+		}
+		operator HANDLE() { return handle; }
+		BOOL setThreadIdealProcessorEx(_In_ PPROCESSOR_NUMBER lpIdealProcessor) {
+			return SetThreadIdealProcessorEx(handle, lpIdealProcessor, nullptr);
+		}
+		DWORD resumeThread() { return ResumeThread(handle); }
+		DWORD suspendThread() { return SuspendThread(handle); }
+	};
+
 	void runThreads() {
-		std::vector<HANDLE> allThreads;
-		std::vector<std::vector<HANDLE>> processorGroups;
+		std::vector<std::vector<Thread>> processorGroups;
 		processorGroups.resize(GetMaximumProcessorGroupCount());
 		WORD curProcGroup{ 0 };
 
@@ -38,21 +112,20 @@ namespace ThreadVector {
 			procGroup.resize(GetMaximumProcessorCount(curProcGroup));
 			BYTE curProc{ 0 };
 			for (auto &proc : procGroup) {
-				proc = CreateThread(nullptr, 0, DequeueThread, 0, STACK_SIZE_PARAM_IS_A_RESERVATION | CREATE_SUSPENDED, nullptr);
+				proc.create(DequeueThread, 0, STACK_SIZE_PARAM_IS_A_RESERVATION | CREATE_SUSPENDED);
 				PROCESSOR_NUMBER procNum{ curProcGroup, curProc, 0 };
-				SetThreadIdealProcessorEx(proc, &procNum, nullptr);
-				ResumeThread(proc);
+				proc.setThreadIdealProcessorEx(&procNum);
+				proc.resumeThread();
 				curProc++;
-				allThreads.push_back(proc);
 			}
 			curProcGroup++;
 		}
 
 		puts("threads running");
-		WaitForMultipleObjects(SafeInt<DWORD>(allThreads.size()), allThreads.data(), TRUE, INFINITE);
-		for (auto thread : allThreads) {
-			CloseHandle(thread);
-		}
+		//WaitForMultipleObjects(SafeInt<DWORD>(allThreads.size()), allThreads.data(), TRUE, INFINITE);
+		//for (auto thread : allThreads) {
+//			CloseHandle(thread);
+	//	}
 	}
 
 };
