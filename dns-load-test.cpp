@@ -4,6 +4,12 @@
 #define MainCPP
 
 #include "Platform.h"
+
+std::vector<std::wstring> CommandLineVector;
+std::unordered_set<std::wstring> CommandLineSet;
+std::unordered_map<std::wstring, std::wstring> CommandLineMap;
+
+
 #include "ClsSockets.h"
 #include "ErrorFormatMessage.h"
 #include "UserHandle.h"
@@ -19,7 +25,6 @@ namespace {
 	const uint32_t ServerAddress = 0x0400020a;
 	const uint32_t ServerPort = 53;
 	const rio::IPv4_Address ClientAddress{ 10, 0, 0, 3 };
-	HANDLE MainThread;
 
 	InputOutputCompletionPort::IOCP iocp;
 
@@ -40,7 +45,7 @@ namespace {
 
 		std::vector<rio::RioSock> sendSockets;
 		sendSockets.reserve(NumSendSockets);
-		for (int i = 0; i < sendSockets.capacity(); i++) {
+		for (decltype(sendSockets.capacity()) i{ 0 }; i < sendSockets.capacity(); i++) {
 			sendSockets.emplace_back(std::move(rio::RioSock()));
 		}
 
@@ -58,11 +63,13 @@ namespace {
 			}
 		}
 
+		HANDLE MainThread = UserHandle::Handle::duplicate(GetCurrentThread());
+
 		for (auto &sendRequest : ser) {
 			sendRequest.AccumFunc = [](ULONG_PTR Parameter) {
 				sendStats.addSample(Parameter);
 			};//AccumSendTicks;
-			sendRequest.AccumSize = 1024;
+			sendRequest.AccumSize = 128;
 			sendRequest.AccumThread = MainThread;
 		}
 
@@ -77,20 +84,56 @@ namespace {
 	}
 };
 
+std::vector<std::wstring> GetCommandLineArgs() {
+	int nArgs;
+	const auto szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+	std::vector<std::wstring> cmdLine(nArgs);
+	for (decltype(cmdLine.size()) i{ 0 }; i < cmdLine.size(); i++) {
+		cmdLine[i] = szArglist[i];
+	}
+	LocalFree(szArglist);
+	return cmdLine;
+}
+
+auto ArgsToSet() {
+	std::unordered_set<std::wstring> ret;
+	int nArgs{ 0 };
+	const auto szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+	std::vector<std::wstring> cmdLine(nArgs);
+	for (decltype(cmdLine.size()) i{ 0 }; i < cmdLine.size(); i++) {
+		std::wstring arg{ szArglist[i] };
+		ret.emplace(arg);
+	}
+	return ret;
+}
+
+auto ArgsToMap() {
+	std::unordered_map<std::wstring, std::wstring> ret;
+
+	int nArgs{ 0 };
+	const auto szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+	std::vector<std::wstring> cmdLine(nArgs);
+	for (decltype(cmdLine.size()) i{ 1 }; i < cmdLine.size(); i++) {
+		std::wstring arg{ szArglist[i] };
+		const auto found{ arg.find_first_of(L"=") };
+		if (std::wstring::npos == found) {
+			continue;
+		}
+		ret.emplace(arg.substr(0, found), arg.substr(found + 1));
+	}
+	LocalFree(szArglist);
+
+	return ret;
+}
+
 int main()
 {
-	MainThread = UserHandle::Handle::duplicate(GetCurrentThread());
-#if 1
+	CommandLineVector = GetCommandLineArgs();
+	CommandLineSet = ArgsToSet();
+	CommandLineMap = ArgsToMap();
 	Sockets::Win10SocketLib win10SocketLib;
 	startTest();
-#else
-	Statistics::StandardDeviation stddev;
-	std::array<double_t, 8> samples{2, 4, 4, 4, 5, 5, 7, 9};
-	for (const auto &sample : samples) {
-		stddev.addSample(sample);
-	}
-	std::cout << stddev.statistics() << std::endl;
-#endif
+
 	puts("Press any key to quit");
 	return getchar();
 

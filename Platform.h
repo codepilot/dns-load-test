@@ -20,3 +20,8 @@ using msl::utilities::SafeInt;
 #include <mstcpip.h>
 #include <Ws2tcpip.h>
 #pragma comment(lib, 	"Ws2_32.lib")
+
+#include <Shellapi.h>
+#include <string>
+#include <unordered_set>
+#include <unordered_map>
