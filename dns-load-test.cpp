@@ -5,13 +5,15 @@
 
 Sockets::GuidMsTcpIp Sockets::GenericWin10Socket::GUID_WSAID;
 
+#include "ErrorFormatMessage.h"
+
 namespace {
 
 #include "rio.h"
 
 	const auto SendsPerSocket = 8;
 	const auto NumSendSockets = 16;
-	const size_t GlobalRioBufferSize = 1024ull * 4096ull;
+	const size_t GlobalRioBufferSize = 4096ull * 1ull;
 	const uint32_t ServerAddress = 0x0400020a;
 
 
@@ -106,6 +108,5 @@ int main()
 {
 	Sockets::Win10SocketLib win10SocketLib;
 	startTest();
-
 	return 0;
 }
