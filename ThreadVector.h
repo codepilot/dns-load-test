@@ -6,11 +6,14 @@ namespace ThreadVector {
 
 	DWORD WINAPI DequeueThread(LPVOID lpThreadParameter) {
 		for (;;) {
+			__int64 remainingTicks = finishTick - SafeInt<__int64>(GetTickCount64());
+			if (remainingTicks <= 0) { break; }
 			std::array<OVERLAPPED_ENTRY, 16> entriesArray;
 			DWORD numEntriesRemoved{ 0 };
-			const auto status = GetQueuedCompletionStatusEx(iocp, entriesArray.data(), SafeInt<ULONG>(entriesArray.size()), &numEntriesRemoved, INFINITE, TRUE);
+			const auto status = GetQueuedCompletionStatusEx(iocp, entriesArray.data(), SafeInt<ULONG>(entriesArray.size()), &numEntriesRemoved, SafeInt<DWORD>(remainingTicks), TRUE);
 			if (!status) {
-				std::cout << "iocp status: " << status << std::endl;
+				//std::cout << "iocp status: " << status << std::endl;
+				continue;
 			}
 			__int64 numSendCompleted = 0;
 			__int64 numRecvCompleted = 0;
@@ -116,7 +119,7 @@ namespace ThreadVector {
 			curProcGroup++;
 		}
 
-		puts("threads running");
+		puts("[");
 		auto nextTimeout = milliseconds + GetTickCount64();
 		for (;;) {
 			const auto curTickCount = GetTickCount64();
@@ -124,7 +127,7 @@ namespace ThreadVector {
 			const auto waitStatus{ WaitForMultipleObjectsEx(SafeInt<DWORD>(allThreads.size()), allThreads.data(), TRUE, waitTime, TRUE) };
 			if (waitStatus >= WAIT_OBJECT_0 && waitStatus < (WAIT_OBJECT_0 + allThreads.size())) {
 				//state of all specified objects is signaled
-				puts("All threads quit");
+				//puts("All threads quit");
 				return;
 			}
 			else if (waitStatus >= WAIT_ABANDONED_0 && waitStatus < (WAIT_ABANDONED_0 + allThreads.size())) {

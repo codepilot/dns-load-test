@@ -32,13 +32,19 @@ CommandLine cmd;
 namespace {
 	size_t GlobalSendBufferSize = 4096ui64 * 1024ui64; //default
 	size_t SendPerAddress = 1; //default
+	size_t RunTimeSecond = 1;//default
+	size_t NumSendCQs = 16;
+	size_t NumReceiveCQs = 16;
+	__int64 startTick;
+	__int64 finishTick;
+
 	rio::IPv4_AddressRangePort ClientAddress;
 	rio::IPv4_AddressRangePort ServerAddress;
 
 	InputOutputCompletionPort::IOCP iocp;
 
-	std::array<rio::CompletionQueue<8192>, 16> sendCQs;
-	std::array<rio::CompletionQueue<8192>, 16> recvCQs;
+	std::vector<rio::CompletionQueue<8192>> sendCQs;
+	std::vector<rio::CompletionQueue<8192>> recvCQs;
 	rio::Buffer globalSendBuffer;
 	rio::Buffer globalReceiveBuffer;
 #include "ThreadVector.h"
@@ -49,12 +55,12 @@ namespace {
 		Sockets::GenericWin10Socket sock(AF_INET, SOCK_DGRAM, IPPROTO_UDP, WSA_FLAG_REGISTERED_IO);
 		static Sockets::GuidMsTcpIp guidMsTcpIP;
 		Sockets::MsSockFuncPtrs funcPtrs(sock.getSocket(), guidMsTcpIP);
-		for (auto &sendCQ : sendCQs) {
-			sendCQ.init(sock, iocp);
-		}
-		for (auto &recvCQ : recvCQs) {
-			recvCQ.init(sock, iocp);
-		}
+
+		sendCQs.resize(NumSendCQs);
+		recvCQs.resize(NumReceiveCQs);
+
+		for (auto &sendCQ : sendCQs) { sendCQ.init(sock, iocp); }
+		for (auto &recvCQ : recvCQs) { recvCQ.init(sock, iocp); }
 		globalSendBuffer.init(sock, SafeInt<DWORD>(GlobalSendBufferSize));
 
 		std::vector<rio::RioSock> sendSockets;
@@ -113,11 +119,15 @@ namespace {
 			recvCQ.notify();
 		}
 
+		startTick = SafeInt<__int64>(GetTickCount64());
+		finishTick = startTick + 1000 * RunTimeSecond;
+
 		ThreadVector::runThreads(1000, []() {
 			//std::cout << sendStats.statistics() << std::endl;
 			__int64 capturedSendCount = GlobalSendCompletionCount;
 			__int64 capturedReceiveCount = GlobalReceiveCompletionCount;
 			__int64 inFlight{ (GlobalReceiveCount + GlobalSendCount) - GlobalIncompletionCount - GlobalSendCompletionCount - GlobalReceiveCompletionCount };
+#if 0
 			std::cout
 				<< "pending(" << GlobalSendCount << ", " << GlobalReceiveCount << ") "
 				<< "err(" << GlobalIncompletionCount << ") "
@@ -126,12 +136,23 @@ namespace {
 				<< "tx*: " << (capturedSendCount - GlobalSendAckCount) << "pps, " << ((capturedSendCount - GlobalSendAckCount) * sizeof(DomainNameSystem::udpMsgData)) / 125000 << "Mbps "
 				<< "rx*: " << (capturedReceiveCount - GlobalReceiveAckCount) << "pps, " << ((capturedReceiveCount - GlobalReceiveAckCount) * sizeof(DomainNameSystem::udpMsgData)) / 125000 << "Mbps"
 				<< std::endl;
+#else
+			std::cout << "{"
+				<< "\"pending\": [" << GlobalSendCount << ", " << GlobalReceiveCount << "], "
+				<< "\"err\":" << GlobalIncompletionCount << ", "
+				<< "\"completed\": [" << GlobalSendCompletionCount << ", " << GlobalReceiveCompletionCount << "], "
+				<< "\"inflight\": " << inFlight << ", "
+				<< "\"tx_pps\": " << (capturedSendCount - GlobalSendAckCount) << ", \"tx_Mbps\": " << ((capturedSendCount - GlobalSendAckCount) * sizeof(DomainNameSystem::udpMsgData)) / 125000 << ", "
+				<< "\"rx_pps\": " << (capturedReceiveCount - GlobalReceiveAckCount) << ", \"rx_Mbps\": " << ((capturedReceiveCount - GlobalReceiveAckCount) * sizeof(DomainNameSystem::udpMsgData)) / 125000 << "},"
+				<< std::endl;
+
+#endif
 
 			GlobalSendAckCount = capturedSendCount;
 			GlobalReceiveAckCount = capturedReceiveCount;
 			//InterlockedAdd64(&GlobalCompletionCount, -capturedCount);
 		});
-		printf("test");
+		printf("null]");
 	}
 };
 
@@ -148,6 +169,18 @@ void parseCommandLine() {
 		std::stoull(cmd.argMap[L"SendPerAddress"]) :
 		SendPerAddress;
 
+	RunTimeSecond = cmd.argMap.count(L"RunTimeSecond") ?
+		std::stoull(cmd.argMap[L"RunTimeSecond"]) :
+		RunTimeSecond;
+
+	NumSendCQs = cmd.argMap.count(L"NumSendCQs") ?
+		std::stoull(cmd.argMap[L"NumSendCQs"]) :
+		NumSendCQs;
+
+	NumReceiveCQs = cmd.argMap.count(L"NumReceiveCQs") ?
+		std::stoull(cmd.argMap[L"NumReceiveCQs"]) :
+		NumReceiveCQs;
+
 }
 
 int main()
@@ -157,7 +190,5 @@ int main()
 	Sockets::Win10SocketLib win10SocketLib;
 	startTest();
 
-	puts("Press any key to quit");
-	return getchar();
-
+	return 0;
 }
