@@ -5,7 +5,18 @@
 
 #include "Platform.h"
 
-__int64 volatile GlobalCompletionCount{ 0 };
+__declspec(align(64)) __int64 volatile GlobalSendCount{ 0 };
+__declspec(align(64)) __int64 volatile GlobalReceiveCount{ 0 };
+
+__declspec(align(64)) __int64 volatile GlobalSendCompletionCount{ 0 };
+__declspec(align(64)) __int64 volatile GlobalReceiveCompletionCount{ 0 };
+
+__declspec(align(64)) __int64 volatile GlobalSendAckCount{ 0 };
+__declspec(align(64)) __int64 volatile GlobalReceiveAckCount{ 0 };
+
+__declspec(align(64)) __int64 volatile GlobalIncompletionCount{ 0 };
+
+
 
 #include "CommandLine.h"
 CommandLine cmd;
@@ -19,17 +30,18 @@ CommandLine cmd;
 #include "rio.h"
 
 namespace {
-	size_t SendsPerSocket = 8ui64; //default
-	size_t GlobalRioBufferSize = 4096ui64 * 1024ui64; //default
+	size_t GlobalSendBufferSize = 4096ui64 * 1024ui64; //default
+	size_t SendPerAddress = 1; //default
 	rio::IPv4_AddressRangePort ClientAddress;
 	rio::IPv4_AddressRangePort ServerAddress;
 
 	InputOutputCompletionPort::IOCP iocp;
 
+	std::array<rio::CompletionQueue<8192>, 16> sendCQs;
+	std::array<rio::CompletionQueue<8192>, 16> recvCQs;
+	rio::Buffer globalSendBuffer;
+	rio::Buffer globalReceiveBuffer;
 #include "ThreadVector.h"
-	rio::CompletionQueue sendCQ;
-	rio::CompletionQueue recvCQ;
-	rio::Buffer buf;
 
 	Statistics::StandardDeviation sendStats;
 
@@ -37,28 +49,41 @@ namespace {
 		Sockets::GenericWin10Socket sock(AF_INET, SOCK_DGRAM, IPPROTO_UDP, WSA_FLAG_REGISTERED_IO);
 		static Sockets::GuidMsTcpIp guidMsTcpIP;
 		Sockets::MsSockFuncPtrs funcPtrs(sock.getSocket(), guidMsTcpIP);
-		sendCQ.init(sock, iocp);
-		recvCQ.init(sock, iocp);
-		buf.init(sock, SafeInt<DWORD>(GlobalRioBufferSize));
+		for (auto &sendCQ : sendCQs) {
+			sendCQ.init(sock, iocp);
+		}
+		for (auto &recvCQ : recvCQs) {
+			recvCQ.init(sock, iocp);
+		}
+		globalSendBuffer.init(sock, SafeInt<DWORD>(GlobalSendBufferSize));
 
 		std::vector<rio::RioSock> sendSockets;
 		sendSockets.reserve(ClientAddress.rangeAddresses());
+		globalReceiveBuffer.init(sock, SafeInt<DWORD>(sendSockets.capacity() * SendPerAddress * (512 + 64)));
+
 		for (decltype(sendSockets.capacity()) i{ 0 }; i < sendSockets.capacity(); i++) {
 			sendSockets.emplace_back(std::move(rio::RioSock()));
 		}
 
-		RIO_BUF udpData{ buf.append(&DomainNameSystem::udpMsgData, sizeof(DomainNameSystem::udpMsgData)) };
-		RIO_BUF udpRemote{ buf.appendAddress(ServerAddress, ServerAddress.port) };
+		RIO_BUF udpData{ globalSendBuffer.append(&DomainNameSystem::udpMsgData, sizeof(DomainNameSystem::udpMsgData)) };
+		RIO_BUF udpRemote{ globalSendBuffer.appendAddress(ServerAddress, ServerAddress.port) };
 
 		uint32_t rangeOffset = 0;
 		for (auto &sendSock : sendSockets) {
-			sendSock.init(ClientAddress.rangeOffset(rangeOffset++), sendCQ, recvCQ, 16, 16, &sendSock);
+			sendSock.init(ClientAddress.rangeOffset(rangeOffset++), sendCQs[rangeOffset % sendCQs.size()].completion, recvCQs[rangeOffset % recvCQs.size()].completion, 16, 16, &sendSock);
 		}
 
 		std::vector<rio::SendExRequest> ser;
-		for (auto &sendSock : sendSockets) {
-			for (decltype(SendsPerSocket) i{ 0 }; i < SendsPerSocket; i++) {
-				sendSock.queueSendEx(ser, &udpData, &udpRemote);
+		std::vector<rio::ReceiveExRequest> rer;
+		ser.reserve(sendSockets.size() * SendPerAddress);
+		rer.reserve(sendSockets.size() * SendPerAddress);
+
+		for (size_t rep = 0; rep < SendPerAddress; rep++) {
+			for (auto &sendSock : sendSockets) {
+				sendSock.queueSendEx(ser, udpData, udpRemote);
+
+				//sendSock.queueReceiveEx(rer, dataBuf, addrBuf);
+				sendSock.queueReceiveEx(rer, globalReceiveBuffer.append(nullptr, 512), globalReceiveBuffer.append(nullptr, 32), globalReceiveBuffer.append(nullptr, 32));
 			}
 		}
 
@@ -73,14 +98,38 @@ namespace {
 		}
 
 
-		rio::SendExRequest::sendAll(ser);
-		sock.RIONotify(sendCQ.completion);
+		//rio::SendExRequest::sendAll(ser);
+		rio::SendExRequest::deferSendAll(ser);
+		rio::ReceiveExRequest::deferReceiveAll(rer);
+		for (auto &sendSock : sendSockets) {
+			sendSock.commitSend();
+			sendSock.commitReceive();
+		}
+		for (auto &sendCQ : sendCQs) {
+			sendCQ.notify();
+		}
+
+		for (auto &recvCQ : recvCQs) {
+			recvCQ.notify();
+		}
 
 		ThreadVector::runThreads(1000, []() {
 			//std::cout << sendStats.statistics() << std::endl;
-			__int64 capturedCount = GlobalCompletionCount;
-			std::cout << capturedCount << "pps " << (capturedCount * sizeof(DomainNameSystem::udpMsgData)) / 125000 << "Mbps" << std::endl;
-			InterlockedAdd64(&GlobalCompletionCount, -capturedCount);
+			__int64 capturedSendCount = GlobalSendCompletionCount;
+			__int64 capturedReceiveCount = GlobalReceiveCompletionCount;
+			__int64 inFlight{ (GlobalReceiveCount + GlobalSendCount) - GlobalIncompletionCount - GlobalSendCompletionCount - GlobalReceiveCompletionCount };
+			std::cout
+				<< "pending(" << GlobalSendCount << ", " << GlobalReceiveCount << ") "
+				<< "err(" << GlobalIncompletionCount << ") "
+				<< "completed(" << GlobalSendCompletionCount << ", " << GlobalReceiveCompletionCount << ") "
+				<< "inflight(" << inFlight << ") "
+				<< "tx*: " << (capturedSendCount - GlobalSendAckCount) << "pps, " << ((capturedSendCount - GlobalSendAckCount) * sizeof(DomainNameSystem::udpMsgData)) / 125000 << "Mbps "
+				<< "rx*: " << (capturedReceiveCount - GlobalReceiveAckCount) << "pps, " << ((capturedReceiveCount - GlobalReceiveAckCount) * sizeof(DomainNameSystem::udpMsgData)) / 125000 << "Mbps"
+				<< std::endl;
+
+			GlobalSendAckCount = capturedSendCount;
+			GlobalReceiveAckCount = capturedReceiveCount;
+			//InterlockedAdd64(&GlobalCompletionCount, -capturedCount);
 		});
 		printf("test");
 	}
@@ -91,13 +140,13 @@ void parseCommandLine() {
 	ServerAddress = cmd.argMap[L"server"];
 	ClientAddress = cmd.argMap[L"client"];
 
-	SendsPerSocket = cmd.argMap.count(L"SendsPerSocket") ?
-		std::stoull(cmd.argMap[L"SendsPerSocket"]) :
-		SendsPerSocket;
+	GlobalSendBufferSize = cmd.argMap.count(L"GlobalSendBufferSize") ?
+		std::stoull(cmd.argMap[L"GlobalSendBufferSize"]) :
+		GlobalSendBufferSize;
 
-	GlobalRioBufferSize = cmd.argMap.count(L"GlobalRioBufferSize") ?
-		std::stoull(cmd.argMap[L"GlobalRioBufferSize"]) :
-		GlobalRioBufferSize;
+	SendPerAddress = cmd.argMap.count(L"SendPerAddress") ?
+		std::stoull(cmd.argMap[L"SendPerAddress"]) :
+		SendPerAddress;
 
 }
 

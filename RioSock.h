@@ -130,20 +130,53 @@ namespace rio {
 			}
 		}
 
-		void init(rio::CompletionQueue &sendCQ, rio::CompletionQueue &recvCQ, ULONG  MaxOutstandingReceive, ULONG  MaxOutstandingSend, PVOID  SocketContext = nullptr) {
+		void init(RIO_CQ sendCQ, RIO_CQ recvCQ, ULONG  MaxOutstandingReceive, ULONG  MaxOutstandingSend, PVOID  SocketContext = nullptr) {
 			rq.init(sock, sendCQ, recvCQ, MaxOutstandingReceive, MaxOutstandingSend, this);
 		}
 
-		void init(IPv4_Address addr, rio::CompletionQueue &sendCQ, rio::CompletionQueue &recvCQ, ULONG  MaxOutstandingReceive, ULONG  MaxOutstandingSend, PVOID  SocketContext = nullptr) {
+		void init(IPv4_Address addr, RIO_CQ sendCQ, RIO_CQ recvCQ, ULONG  MaxOutstandingReceive, ULONG  MaxOutstandingSend, PVOID  SocketContext = nullptr) {
 			rq.init(sock, sendCQ, recvCQ, MaxOutstandingReceive, MaxOutstandingSend, this);
 			bindIPv4(addr);
 		}
 
-		void queueSendEx(std::vector<SendExRequest> &ser, PRIO_BUF pData, PRIO_BUF pRemoteAddress) {
+		void queueSendEx(std::vector<SendExRequest> &ser, RIO_BUF pData = { 0,0,0 }, RIO_BUF pRemoteAddress = { 0,0,0 }) {
 			ser.push_back({ sock.RIOSendEx , rq.requests , pData, pRemoteAddress });
 		}
 
+		void queueReceiveEx(std::vector<ReceiveExRequest> &rer, RIO_BUF pData = { 0,0,0 }, RIO_BUF pLocalAddress = { 0,0,0 }, RIO_BUF pRemoteAddress = { 0,0,0 }) {
+			rer.push_back({ sock.RIOReceiveEx , rq.requests , pData, pLocalAddress, pRemoteAddress });
+		}
+
+		void commitSend() {
+			auto status = sock.RIOSend(
+				rq.requests,
+				nullptr,
+				0,
+				RIO_MSG_COMMIT_ONLY,
+				nullptr);
+			//LeaveCriticalSection(&GlobalCriticalSection);
+
+			if (!status || status == -1) {
+				ErrorFormatMessage::exWSAGetLastError();
+			}
+		}
+
+		void commitReceive() {
+			auto status = sock.RIOReceive(
+				rq.requests,
+				nullptr,
+				0,
+				RIO_MSG_COMMIT_ONLY,
+				nullptr);
+			//LeaveCriticalSection(&GlobalCriticalSection);
+
+			if (!status || status == -1) {
+				ErrorFormatMessage::exWSAGetLastError();
+			}
+		}
+
 		void sendEx(PRIO_BUF pData, PRIO_BUF pRemoteAddress) {
+			//EnterCriticalSection(&GlobalCriticalSection);
 			auto status = sock.RIOSendEx(
 				rq.requests,
 				pData,
@@ -154,6 +187,8 @@ namespace rio {
 				nullptr,
 				0,
 				nullptr);
+			//LeaveCriticalSection(&GlobalCriticalSection);
+
 			if (!status || status == -1) {
 				ErrorFormatMessage::exWSAGetLastError();
 			}

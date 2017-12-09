@@ -45,7 +45,9 @@ namespace rio {
 
 		RIO_BUF append(LPCVOID src, size_t byteCount) {
 			size_t retOffset = linearAllocate(byteCount);
-			CopyMemory(reinterpret_cast<uint8_t *>(buf) + retOffset, src, byteCount);
+			if (src) {
+				CopyMemory(reinterpret_cast<uint8_t *>(buf) + retOffset, src, byteCount);
+			}
 			return { bufid, SafeInt<ULONG>(retOffset), SafeInt<ULONG>(byteCount) };
 		}
 
