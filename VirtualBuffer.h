@@ -10,12 +10,45 @@ public:
 	size_t fileSize{0};
 	size_t memSize{0};
 
-	VirtualBuffer(LPCTSTR lpFileName, DWORD dwDesiredAccess = GENERIC_READ, DWORD dwShareMode = FILE_SHARE_READ) {
-		auto fileHandle = CreateFile(lpFileName, dwDesiredAccess, dwShareMode, nullptr, OPEN_EXISTING, 0, nullptr);
+	VirtualBuffer(LPCTSTR lpFileName, DWORD dwDesiredAccess = GENERIC_READ, DWORD dwShareMode = FILE_SHARE_READ, DWORD dwCreationDisposition = OPEN_EXISTING, __int64 FileSize = 0) {
+		auto fileHandle = CreateFile(
+			lpFileName,
+			dwDesiredAccess,
+			dwShareMode,
+			nullptr,
+			dwCreationDisposition,
+			0,
+			nullptr);
+
+		if (fileHandle == INVALID_HANDLE_VALUE) { ErrorFormatMessage::exGetLastError(); }
+		//SetFilePointerEx(fileHandle, )
+
+		LARGE_INTEGER LargeFileSize;
+		LargeFileSize.QuadPart = FileSize;
+
+		DWORD flProtect{ SafeInt<DWORD>(dwDesiredAccess == GENERIC_READ ? PAGE_READONLY : PAGE_READWRITE) };
+		auto mappingHandle = CreateFileMappingW(
+			fileHandle,
+			nullptr,
+			flProtect,
+			LargeFileSize.HighPart,
+			LargeFileSize.LowPart,
+			nullptr);
+
+		if (!mappingHandle) { ErrorFormatMessage::exGetLastError(); }
 		GetFileSizeEx(fileHandle, reinterpret_cast<PLARGE_INTEGER>(&fileSize));
-		auto mappingHandle = CreateFileMapping(fileHandle, nullptr, PAGE_READONLY, 0, 0, nullptr);
 		CloseHandle(fileHandle);
-		ptr = MapViewOfFile(mappingHandle, FILE_MAP_READ, 0, 0, 0);
+
+		DWORD dwMappingDesiredAccess{ SafeInt<DWORD>(dwDesiredAccess == GENERIC_READ ? FILE_MAP_READ : FILE_MAP_WRITE) };
+
+		ptr = MapViewOfFile(
+			mappingHandle,
+			dwMappingDesiredAccess,
+			0,
+			0,
+			FileSize);
+
+		if (!ptr) { ErrorFormatMessage::exGetLastError(); }
 		CloseHandle(mappingHandle);
 //	memSize = size;
 		isMapped = TRUE;

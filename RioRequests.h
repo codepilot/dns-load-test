@@ -12,6 +12,7 @@ namespace rio {
 		LPFN_RIOSENDEX RIOSendEx;
 		RIO_RQ requests;
 		RIO_BUF pData;
+		RIO_BUF pLocalAddress;
 		RIO_BUF pRemoteAddress;
 		LARGE_INTEGER PerfFreq{ 0 };
 		LARGE_INTEGER PerfCountStart{ 0 };
@@ -19,10 +20,11 @@ namespace rio {
 		double_t freqToMicroseconds{ 0 };
 		Statistics::StandardDeviation stats;
 
-		SendExRequest(LPFN_RIOSENDEX _RIOSendEx, RIO_RQ _requests, RIO_BUF _pData, RIO_BUF _pRemoteAddress) : ExRequest{ true } {
+		SendExRequest(LPFN_RIOSENDEX _RIOSendEx, RIO_RQ _requests, RIO_BUF _pData, RIO_BUF _pLocalAddress, RIO_BUF _pRemoteAddress) : ExRequest{ true } {
 			RIOSendEx = _RIOSendEx;
 			requests = _requests;
 			pData = _pData;
+			pLocalAddress = _pLocalAddress;
 			pRemoteAddress = _pRemoteAddress;
 			QueryPerformanceFrequency(&PerfFreq);
 			freqToMicroseconds = 1e6 / PerfFreq.QuadPart;
@@ -104,7 +106,17 @@ namespace rio {
 			if (GlobalSendCount >= SafeInt<__int64>( MaxSendCount )) {
 				return;
 			}
-			*reinterpret_cast<uint16_t *>(reinterpret_cast<uint8_t *>(globalSendBufferBuf) + pData.Offset) = static_cast<uint16_t>( InterlockedIncrement64(&GlobalSendCount));
+
+			TimingRecord tr;
+			SecureZeroMemory(&tr, sizeof(tr));
+			//tr.timestamp = PerfCountStart.QuadPart;
+			*reinterpret_cast<uint16_t *>(reinterpret_cast<uint8_t *>(globalSendBufferBuf) + pData.Offset) = htons(static_cast<uint16_t>(InterlockedIncrement64(&GlobalSendCount)));
+
+			CopyMemory(&tr.src, reinterpret_cast<uint8_t *>(registeredBuffers[reinterpret_cast<size_t>(pLocalAddress.BufferId)]) + pLocalAddress.Offset, sizeof(tr.src));
+			CopyMemory(&tr.src.Ipv4.sin_zero, reinterpret_cast<uint8_t *>(registeredBuffers[reinterpret_cast<size_t>(pData.BufferId)]) + pData.Offset, 2);
+			CopyMemory(&tr.dst, reinterpret_cast<uint8_t *>(registeredBuffers[reinterpret_cast<size_t>(pRemoteAddress.BufferId)]) + pRemoteAddress.Offset, sizeof(tr.dst));
+			tds.writeRecord(&tr);
+
 			InterlockedIncrement64(&DnsRequestCounter);
 			auto status = RIOSendEx(
 				requests,
@@ -176,6 +188,15 @@ namespace rio {
 		size_t AccumSize{ 0xFFFFFFFF };
 		void completed() {
 			QueryPerformanceCounter(&PerfCountCompleted);
+
+			TimingRecord tr;
+			SecureZeroMemory(&tr, sizeof(tr));
+			//tr.timestamp = PerfCountCompleted.QuadPart;
+			CopyMemory(&tr.src, reinterpret_cast<uint8_t *>(registeredBuffers[reinterpret_cast<size_t>(pLocalAddress.BufferId)]) + pLocalAddress.Offset, sizeof(tr.src));
+			CopyMemory(&tr.dst, reinterpret_cast<uint8_t *>(registeredBuffers[reinterpret_cast<size_t>(pRemoteAddress.BufferId)]) + pRemoteAddress.Offset, sizeof(tr.dst));
+			CopyMemory(&tr.dst.Ipv4.sin_zero, reinterpret_cast<uint8_t *>(registeredBuffers[reinterpret_cast<size_t>(pData.BufferId)]) + pData.Offset, 2);
+			tds.writeRecord(&tr);
+
 			const auto timeTaken{ PerfCountCompleted.QuadPart - PerfCountStart.QuadPart };
 			stats.addSample(static_cast<double_t>(timeTaken) * freqToMicroseconds);
 			if (stats.count() == AccumSize) {
@@ -217,6 +238,9 @@ namespace rio {
 
 		void receive() {
 			QueryPerformanceCounter(&PerfCountStart);
+
+
+
 			InterlockedIncrement64(&GlobalReceiveCount);
 			auto status = RIOReceiveEx(
 				requests,

@@ -43,7 +43,7 @@ namespace ThreadVector {
 							numSendCompleted++;
 							const auto sendRequest{ reinterpret_cast<rio::SendExRequest *>(request) };
 							sendRequest->send();
-							//sendRequest->completed();
+							
 						}
 						else {
 							const auto receiveRequest{ reinterpret_cast<rio::ReceiveExRequest *>(request) };
@@ -60,6 +60,7 @@ namespace ThreadVector {
 							else {
 								numRecvCompleted++;
 							}
+							receiveRequest->completed();
 							receiveRequest->receive();
 						}
 					}

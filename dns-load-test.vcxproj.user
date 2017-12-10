@@ -5,7 +5,7 @@
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>"C:\GitHub\dns-load-test\x64\Release\dns-load-test.exe" server=10.2.0.4/32:53 client=10.5.0.0/32 SendPerAddress=1 RunTimeSecond=15 NumSendCQs=4 NumReceiveCQs=4 MaxSendCount=50000</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>"C:\GitHub\dns-load-test\x64\Release\dns-load-test.exe" server=10.2.0.4/32:53 client=10.5.0.0/32 SendPerAddress=1024 RunTimeSecond=15 NumSendCQs=1 NumReceiveCQs=1 MaxSendCount=65535</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

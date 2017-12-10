@@ -139,8 +139,8 @@ namespace rio {
 			bindIPv4(addr);
 		}
 
-		void queueSendEx(std::vector<SendExRequest> &ser, RIO_BUF pData = { 0,0,0 }, RIO_BUF pRemoteAddress = { 0,0,0 }) {
-			ser.push_back({ sock.RIOSendEx , rq.requests , pData, pRemoteAddress });
+		void queueSendEx(std::vector<SendExRequest> &ser, RIO_BUF pData = { 0,0,0 }, RIO_BUF pLocalAddress = { 0,0,0 }, RIO_BUF pRemoteAddress = { 0,0,0 }) {
+			ser.push_back({ sock.RIOSendEx , rq.requests , pData, pLocalAddress, pRemoteAddress });
 		}
 
 		void queueReceiveEx(std::vector<ReceiveExRequest> &rer, RIO_BUF pData = { 0,0,0 }, RIO_BUF pLocalAddress = { 0,0,0 }, RIO_BUF pRemoteAddress = { 0,0,0 }) {
