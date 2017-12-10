@@ -3,6 +3,7 @@
 #include "Platform.h"
 
 namespace DomainNameSystem {
+
 	const uint8_t udpMsgData[80]{
 		0x02, 0xdc, //Transaction ID: 0x02DC
 		0x01, 0x00, //Flags: 0x0100 Standard Query
@@ -69,9 +70,10 @@ namespace DomainNameSystem {
 			0x61, 0x62,
 		0x00 //0 byte part
 	};
+
 	bool doesReplyMatchVector(std::vector<uint8_t> reply) {
 		if (reply.size() != sizeof(udpMsgReply)) { return false; }
-		for (size_t i = 0; i < sizeof(udpMsgReply); i++) {
+		for (size_t i = 2; i < sizeof(udpMsgReply); i++) {
 			if (reply[i] != udpMsgReply[i]) { return false; }
 		}
 		return true;

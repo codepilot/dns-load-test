@@ -3,3 +3,4 @@
 /.vs
 *.filters
 /logs/
+runSeries.cmd

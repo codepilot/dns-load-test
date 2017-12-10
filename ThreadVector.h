@@ -12,55 +12,62 @@ namespace ThreadVector {
 			DWORD numEntriesRemoved{ 0 };
 			const auto status = GetQueuedCompletionStatusEx(iocp, entriesArray.data(), SafeInt<ULONG>(entriesArray.size()), &numEntriesRemoved, SafeInt<DWORD>(remainingTicks), TRUE);
 			if (!status) {
-				//std::cout << "iocp status: " << status << std::endl;
+				if (WAIT_TIMEOUT == GetLastError()) { break; }
+				ErrorFormatMessage::exGetLastError();
+				std::cout << "iocp status: " << status << std::endl;
 				continue;
 			}
-			__int64 numSendCompleted = 0;
-			__int64 numRecvCompleted = 0;
+
 			for (size_t eidx{ 0 }; eidx < numEntriesRemoved; eidx++) {
 				auto &entry = entriesArray[eidx];
-				auto results = reinterpret_cast<rio::CompletionQueue<1>*>(entry.lpCompletionKey)->dequeue();
-				for (auto result : results) {
-					//reinterpret_cast<rio::SendExRequest *>(result.RequestContext)->completed();
-					const auto request = reinterpret_cast<rio::ExRequest *>(result.RequestContext);
-					if (result.Status != 0 || result.BytesTransferred == 0) {
-						printf("%s status: %d, bytes: %d, socket: %p, request: %p\n",
-							request->isSend?"Send":"Recv",
-							result.Status,
-							result.BytesTransferred,
-							reinterpret_cast<LPVOID>(result.SocketContext),
-							reinterpret_cast<LPVOID>(result.RequestContext));
-					}
-					
-					if (request->isSend) {
-						numSendCompleted++;
-						const auto sendRequest{ reinterpret_cast<rio::SendExRequest *>(request) };
-						//reinterpret_cast<rio::CompletionQueue<1>*>(entry.lpCompletionKey)->enter();
-						sendRequest->send();
-						//reinterpret_cast<rio::CompletionQueue<1>*>(entry.lpCompletionKey)->leave();
-						//reinterpret_cast<rio::CompletionQueue<1>*>(entry.lpCompletionKey)->notify();
-						//reinterpret_cast<rio::RioSock *>(result.SocketContext)->sock.RIONotify(reinterpret_cast<rio::CompletionQueue<1>*>(entry.lpCompletionKey)->completion);
-					}
-					else {
-						const auto receiveRequest{ reinterpret_cast<rio::ReceiveExRequest *>(request) };
-						std::vector<uint8_t> recvData{
-							reinterpret_cast<uint8_t *>(globalReceiveBuffer.buf) + receiveRequest->pData.Offset,
-							reinterpret_cast<uint8_t *>(globalReceiveBuffer.buf) + receiveRequest->pData.Offset + min(result.BytesTransferred, receiveRequest->pData.Length) };
-						if (!DomainNameSystem::doesReplyMatchVector(recvData)) {
-							for (const auto &data : recvData) {
-								printf("%02x", data);
-							}
-							puts("");
+				auto cq = reinterpret_cast<rio::CompletionQueue<1>*>(entry.lpCompletionKey);
+				for (;;) {
+					auto results = cq->dequeue();
+					if (!results.size()) { break; }
+
+					__int64 numSendCompleted = 0;
+					__int64 numRecvCompleted = 0;
+
+					for (auto result : results) {
+						const auto request = reinterpret_cast<rio::ExRequest *>(result.RequestContext);
+						if (result.Status != 0 || result.BytesTransferred == 0) {
+							printf("%s status: %d, bytes: %d, socket: %p, request: %p\n",
+								request->isSend ? "Send" : "Recv",
+								result.Status,
+								result.BytesTransferred,
+								reinterpret_cast<LPVOID>(result.SocketContext),
+								reinterpret_cast<LPVOID>(result.RequestContext));
+						}
+
+						if (request->isSend) {
+							numSendCompleted++;
+							const auto sendRequest{ reinterpret_cast<rio::SendExRequest *>(request) };
+							sendRequest->send();
+							//sendRequest->completed();
 						}
 						else {
-							numRecvCompleted++;
+							const auto receiveRequest{ reinterpret_cast<rio::ReceiveExRequest *>(request) };
+							std::vector<uint8_t> recvData{
+								reinterpret_cast<uint8_t *>(globalReceiveBuffer.buf) + receiveRequest->pData.Offset,
+								reinterpret_cast<uint8_t *>(globalReceiveBuffer.buf) + receiveRequest->pData.Offset + min(result.BytesTransferred, receiveRequest->pData.Length) };
+
+							if (!DomainNameSystem::doesReplyMatchVector(recvData)) {
+								for (const auto &data : recvData) {
+									printf("%02x", data);
+								}
+								puts("");
+							}
+							else {
+								numRecvCompleted++;
+							}
+							receiveRequest->receive();
 						}
-						receiveRequest->receive();
 					}
+					InterlockedAdd64(&GlobalSendCompletionCount, numSendCompleted);
+					InterlockedAdd64(&GlobalReceiveCompletionCount, numRecvCompleted);
 				}
+				cq->notify();
 			}
-			InterlockedAdd64(&GlobalSendCompletionCount, numSendCompleted);
-			InterlockedAdd64(&GlobalReceiveCompletionCount, numRecvCompleted);
 
 		}
 		return 0;
@@ -92,6 +99,9 @@ namespace ThreadVector {
 		BOOL setThreadIdealProcessorEx(_In_ PPROCESSOR_NUMBER lpIdealProcessor) {
 			return SetThreadIdealProcessorEx(handle, lpIdealProcessor, nullptr);
 		}
+		auto setThreadAffinityMask(DWORD_PTR dwThreadAffinityMask) {
+			return SetThreadAffinityMask(handle, dwThreadAffinityMask);
+		}
 		DWORD resumeThread() { return ResumeThread(handle); }
 		DWORD suspendThread() { return SuspendThread(handle); }
 	};
@@ -107,13 +117,11 @@ namespace ThreadVector {
 			procGroup.resize(min(8, GetMaximumProcessorCount(curProcGroup)));
 			BYTE curProc{ 0 };
 			for (auto &proc : procGroup) {
-				if (curProcGroup || curProc) {
 					proc.create(DequeueThread, iocp, STACK_SIZE_PARAM_IS_A_RESERVATION | CREATE_SUSPENDED);
 					allThreads.push_back(proc);
 					PROCESSOR_NUMBER procNum{ curProcGroup, curProc, 0 };
 					proc.setThreadIdealProcessorEx(&procNum);
 					proc.resumeThread();
-				}
 				curProc++;
 			}
 			curProcGroup++;
@@ -124,6 +132,11 @@ namespace ThreadVector {
 		for (;;) {
 			const auto curTickCount = GetTickCount64();
 			const auto waitTime = SafeInt<DWORD>( (curTickCount >= nextTimeout) ? 0 : nextTimeout - curTickCount);
+			if (!waitTime) {
+				nextTimeout += milliseconds;
+				if (timeoutFunc) { timeoutFunc(); }
+				continue;
+			}
 			const auto waitStatus{ WaitForMultipleObjectsEx(SafeInt<DWORD>(allThreads.size()), allThreads.data(), TRUE, waitTime, TRUE) };
 			if (waitStatus >= WAIT_OBJECT_0 && waitStatus < (WAIT_OBJECT_0 + allThreads.size())) {
 				//state of all specified objects is signaled

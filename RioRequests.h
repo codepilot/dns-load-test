@@ -80,47 +80,44 @@ namespace rio {
 
 		void deferSend() {
 			QueryPerformanceCounter(&PerfCountStart);
-			for (;;) {
-				InterlockedIncrement64(&GlobalSendCount);
-				auto status = RIOSendEx(
-					requests,
-					pData.BufferId? &pData:nullptr,
-					pData.BufferId ? 1 : 0,
-					nullptr,
-					pRemoteAddress.BufferId? &pRemoteAddress:nullptr,
-					nullptr,
-					nullptr,
-					RIO_MSG_DEFER,
-					this);
-				if (!status || status == -1) {
-					ErrorFormatMessage::exWSAGetLastError();
-				}
-				else {
-					break;
-				}
+			if (GlobalSendCount >= SafeInt<__int64>( MaxSendCount )) {
+				return;
+			}
+			InterlockedIncrement64(&GlobalSendCount);
+			auto status = RIOSendEx(
+				requests,
+				pData.BufferId? &pData:nullptr,
+				pData.BufferId ? 1 : 0,
+				nullptr,
+				pRemoteAddress.BufferId? &pRemoteAddress:nullptr,
+				nullptr,
+				nullptr,
+				RIO_MSG_DEFER,
+				this);
+			if (!status || status == -1) {
+				ErrorFormatMessage::exWSAGetLastError();
 			}
 		}
 
 		void send() {
 			QueryPerformanceCounter(&PerfCountStart);
-			for (;;) {
-				InterlockedIncrement64(&GlobalSendCount);
-				auto status = RIOSendEx(
-					requests,
-					pData.BufferId? &pData:nullptr,
-					pData.BufferId ? 1 : 0,
-					nullptr,
-					pRemoteAddress.BufferId?&pRemoteAddress:nullptr,
-					nullptr,
-					nullptr,
-					0,
-					this);
-				if (!status || status == -1) {
-					ErrorFormatMessage::exWSAGetLastError();
-				}
-				else {
-					break;
-				}
+			if (GlobalSendCount >= SafeInt<__int64>( MaxSendCount )) {
+				return;
+			}
+			*reinterpret_cast<uint16_t *>(reinterpret_cast<uint8_t *>(globalSendBufferBuf) + pData.Offset) = static_cast<uint16_t>( InterlockedIncrement64(&GlobalSendCount));
+			InterlockedIncrement64(&DnsRequestCounter);
+			auto status = RIOSendEx(
+				requests,
+				pData.BufferId? &pData:nullptr,
+				pData.BufferId ? 1 : 0,
+				nullptr,
+				pRemoteAddress.BufferId?&pRemoteAddress:nullptr,
+				nullptr,
+				nullptr,
+				0,
+				this);
+			if (!status || status == -1) {
+				ErrorFormatMessage::exWSAGetLastError();
 			}
 		}
 	};
@@ -154,9 +151,11 @@ namespace rio {
 			}
 		}
 
-		static void ReceiveAll(std::vector<ReceiveExRequest> &ser) {
+		static void receiveAll(std::vector<ReceiveExRequest> &ser) {
+			size_t recvNum = 0;
 			for (auto &n : ser) {
 				n.receive();
+				recvNum++;
 			}
 		}
 
@@ -200,47 +199,37 @@ namespace rio {
 
 		void deferReceive() {
 			QueryPerformanceCounter(&PerfCountStart);
-			for (;;) {
-				InterlockedIncrement64(&GlobalReceiveCount);
-				auto status = RIOReceiveEx(
-					requests,
-					pData.BufferId?&pData:nullptr,
-					pData.BufferId ? 1 : 0,
-					pLocalAddress.BufferId?&pLocalAddress:nullptr,
-					pRemoteAddress.BufferId?&pRemoteAddress:nullptr,
-					nullptr,
-					nullptr,
-					RIO_MSG_DEFER,
-					this);
-				if (!status || status == -1) {
-					ErrorFormatMessage::exWSAGetLastError();
-				}
-				else {
-					break;
-				}
+			InterlockedIncrement64(&GlobalReceiveCount);
+			auto status = RIOReceiveEx(
+				requests,
+				pData.BufferId?&pData:nullptr,
+				pData.BufferId ? 1 : 0,
+				pLocalAddress.BufferId?&pLocalAddress:nullptr,
+				pRemoteAddress.BufferId?&pRemoteAddress:nullptr,
+				nullptr,
+				nullptr,
+				RIO_MSG_DEFER,
+				this);
+			if (!status || status == -1) {
+				ErrorFormatMessage::exWSAGetLastError();
 			}
 		}
 
 		void receive() {
 			QueryPerformanceCounter(&PerfCountStart);
-			for (;;) {
-				InterlockedIncrement64(&GlobalReceiveCount);
-				auto status = RIOReceiveEx(
-					requests,
-					pData.BufferId?&pData:nullptr,
-					pData.BufferId ? 1 : 0,
-					pLocalAddress.BufferId?&pLocalAddress:nullptr,
-					pRemoteAddress.BufferId?&pRemoteAddress:nullptr,
-					nullptr,
-					nullptr,
-					0,
-					this);
-				if (!status || status == -1) {
-					ErrorFormatMessage::exWSAGetLastError();
-				}
-				else {
-					break;
-				}
+			InterlockedIncrement64(&GlobalReceiveCount);
+			auto status = RIOReceiveEx(
+				requests,
+				pData.BufferId?&pData:nullptr,
+				pData.BufferId ? 1 : 0,
+				pLocalAddress.BufferId?&pLocalAddress:nullptr,
+				pRemoteAddress.BufferId?&pRemoteAddress:nullptr,
+				nullptr,
+				nullptr,
+				0,
+				this);
+			if (!status || status == -1) {
+				ErrorFormatMessage::exWSAGetLastError();
 			}
 		}
 	};

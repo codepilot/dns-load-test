@@ -12,6 +12,13 @@ namespace rio {
 		LPFN_RIONOTIFY RIONotify;
 		CRITICAL_SECTION GlobalCriticalSection;
 
+		void resize(DWORD queueSize) {
+			auto status = RIOResizeCompletionQueue(completion, queueSize);
+			if (!status || status == -1) {
+				ErrorFormatMessage::exWSAGetLastError();
+			}
+		}
+
 		void init(Sockets::GenericWin10Socket &sock, HANDLE iocp) {
 			InitializeCriticalSectionAndSpinCount(&GlobalCriticalSection, 0x00000400);
 
@@ -47,17 +54,8 @@ namespace rio {
 			LeaveCriticalSection(&GlobalCriticalSection);
 		}
 		std::vector<RIORESULT> dequeue() {
-			//std::vector<RIORESULT> retVector;
 			std::array<RIORESULT, 16> ret;
-
-			EnterCriticalSection(&GlobalCriticalSection);
-			//for(;;) {
-				const auto count = RIODequeueCompletion(completion, ret.data(), SafeInt<ULONG>(ret.size()));
-				//if (!count) { break; }
-				//std::copy(ret.begin(), ret.begin() + count, std::back_inserter(retVector));
-			//}
-			RIONotify(completion);
-			LeaveCriticalSection(&GlobalCriticalSection);
+			const auto count = RIODequeueCompletion(completion, ret.data(), SafeInt<ULONG>(ret.size()));
 			return std::vector<RIORESULT>{ret.begin(), ret.begin() + count};
 		}
 	};

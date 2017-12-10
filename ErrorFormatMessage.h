@@ -20,7 +20,7 @@ public:
 		switch(errorCode) {
 			case 10055: //out of buffer
 				InterlockedIncrement64(&GlobalIncompletionCount);
-				break;
+				//break;
 			default:
 			{
 				LPVOID lpMsgBuf;
