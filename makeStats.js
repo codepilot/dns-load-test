@@ -2,27 +2,37 @@
 
 const fs = require('fs');
 
-const ts = fs.readFileSync('testOutput.bin');
-
-const freq_to_us = 4000;//000//000;//3914069;
-
-//console.log(ts);
+const freq_to_us = 4000;//000//000; 4GHz base clock, remove 6 zeros for Microseconds
 
 const dstTimes = [];
 const srcTimes = [];
+const timeDiffOld = [];
 const timeDiff = [];
 
-for(let n = 0; n < ts.length >>>6; n++) {
-  const srcID = ts.readUIntBE((n << 6) + 8 + 8, 2);
-  const dstID = ts.readUIntBE((n << 6) + 28 + 8 + 8, 2);
-  const timeCount = ts.readUIntLE(n << 6, 6) / freq_to_us;
-  if(srcID) {srcTimes[srcID] = timeCount; }
-  if(dstID) {dstTimes[dstID] = timeCount; }
-  //console.log(n, srcID, dstID, ts.readUIntLE(n << 6, 6), ts.slice((n << 6) + 8, (n << 6) + 64).toString('hex'));
-}
+const rfs = fs.openSync('testOutput.bin', 'r');
 
-for(let n = 0; n < 65536; n++) {
-  timeDiff[n] = dstTimes[n] - srcTimes[n];
+let filePos = 0;
+let maxFileSize = 1602486272; //bigger runs out of memory
+while(filePos < maxFileSize) {
+  let ts = Buffer.alloc(1024*1024);
+  ts.slice(0, fs.readSync(rfs, ts, 0, ts.length, filePos));
+  filePos += ts.length;
+  if(!ts.length) { break; }
+  for(let n = 0; n < ts.length >>>6; n++) {
+    const srcID = ts.readUIntBE((n << 6) + 8 + 8, 2);
+    const dstID = ts.readUIntBE((n << 6) + 28 + 8 + 8, 2);
+    const timeCount = ts.readUIntLE(n << 6, 6) / freq_to_us;
+    if(srcID) {srcTimes[srcID] = timeCount; }
+    if(dstID) {
+      if(typeof srcTimes[dstID] === 'number') {
+        timeDiff.push(timeCount - srcTimes[dstID]);
+        delete srcTimes[dstID];
+      } else {
+        dstTimes[dstID] = timeCount;
+      }
+    }
+  }
+
 }
 
 function numSort(a, b){
@@ -36,11 +46,21 @@ function numSort(a, b){
 }
 
 const filtered = timeDiff.filter((n)=> ((typeof n === 'number') && !isNaN(n)));
-console.log(filtered.length)
+fs.writeFileSync('filteredStats.json', JSON.stringify(filtered));
 const sortedTimeDiff = filtered.sort(numSort);
-fs.writeFileSync('filteredStats.json', JSON.stringify(sortedTimeDiff));
+fs.writeFileSync('sortedFilteredStats.json', JSON.stringify(sortedTimeDiff));
+
+const timeSum = sortedTimeDiff.reduce((p, c, i, a)=> p + c, 0);
+const timeAverage = timeSum / filtered.length;
+const variance = sortedTimeDiff.reduce((p, c, i, a)=> p + Math.pow(c - timeAverage, 2), 0);
+const varianceAverage = variance / filtered.length;
+const standardDeviation = Math.sqrt(varianceAverage);
 
 console.log({
+  "Average": `${timeAverage}us`,
+  "StandardDeviation": `${standardDeviation}us`,
+  "0%": `${filtered[0]}us`,
+  "25%": `${filtered[Math.floor((filtered.length - 1) * 0.25)]}us`,
   "50%": `${filtered[Math.floor((filtered.length - 1) * 0.50)]}us`,
   "75%": `${filtered[Math.floor((filtered.length - 1) * 0.75)]}us`,
   "80%": `${filtered[Math.floor((filtered.length - 1) * 0.80)]}us`,

@@ -8,7 +8,7 @@ namespace ThreadVector {
 		for (;;) {
 			__int64 remainingTicks = finishTick - SafeInt<__int64>(GetTickCount64());
 			if (remainingTicks <= 0) { break; }
-			std::array<OVERLAPPED_ENTRY, 16> entriesArray;
+			std::array<OVERLAPPED_ENTRY, 1> entriesArray;
 			DWORD numEntriesRemoved{ 0 };
 			const auto status = GetQueuedCompletionStatusEx(iocp, entriesArray.data(), SafeInt<ULONG>(entriesArray.size()), &numEntriesRemoved, SafeInt<DWORD>(remainingTicks), TRUE);
 			if (!status) {
@@ -22,13 +22,17 @@ namespace ThreadVector {
 				auto &entry = entriesArray[eidx];
 				auto cq = reinterpret_cast<rio::CompletionQueue<1>*>(entry.lpCompletionKey);
 				for (;;) {
-					auto results = cq->dequeue();
-					if (!results.size()) { break; }
+					//auto results = cq->dequeue();
+					std::array<RIORESULT, 1> results;
+					const auto count = cq->RIODequeueCompletion(cq->completion, results.data(), SafeInt<ULONG>(results.size()));
+
+				//if (!results.size()) { break; }
 
 					__int64 numSendCompleted = 0;
 					__int64 numRecvCompleted = 0;
 
-					for (auto result : results) {
+					for (size_t c{ 0 }; c < count; c++) {
+						auto &result = results[c];
 						const auto request = reinterpret_cast<rio::ExRequest *>(result.RequestContext);
 						if (result.Status != 0 || result.BytesTransferred == 0) {
 							printf("%s status: %d, bytes: %d, socket: %p, request: %p\n",
